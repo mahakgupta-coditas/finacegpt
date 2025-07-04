@@ -8,5 +8,15 @@ class WebSearchAgent:
 
     def search(self, state: GraphState) -> WebSearchResponse:
         """Search the web for information"""
-        query = state.rephrased_query or state.user_query
-        return self.web_search_tool(query)
+        try:
+            query = state.rephrased_query or state.user_query
+            print(f"Web search query: {query}")
+            result = self.web_search_tool(query)
+            print(f"Web search result: {result}")
+            return result
+        except Exception as e:
+            print(f"Web search error: {e}")
+            return WebSearchResponse(
+                success=False,
+                error=f"Web search failed: {str(e)}"
+            )

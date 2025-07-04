@@ -7,6 +7,7 @@ from app.langgraph.agents.dblookup_agent import DatabaseLookupAgent
 from app.langgraph.agents.websearch_agent import WebSearchAgent
 from app.langgraph.agents.summarizer_agent import SummarizerAgent
 from app.langgraph.agents.memory_agent import MemoryAgent
+from app.langgraph.agents.outofscope_agent import OutOfScopeAgent
 from app.services.llm_call import LLMService
 
 class FinanceGPTGraph:
@@ -19,6 +20,7 @@ class FinanceGPTGraph:
         self.web_search = WebSearchAgent(web_search_tool)
         self.summarizer = SummarizerAgent(self.llm_service)
         self.memory = MemoryAgent(db)
+        self.out_of_scope = OutOfScopeAgent(self.llm_service)
 
     def create_graph(self):
         workflow = StateGraph(GraphState)
@@ -66,25 +68,38 @@ class FinanceGPTGraph:
         try:
             result = self.supervisor.analyze(state)
             state.route_decision = result.decision
-        except Exception:
+        except Exception as e:
+            print(f"Supervisor error: {e}")
             state.route_decision = "intent"
         return state
 
     def greeting_node(self, state: GraphState) -> GraphState:
-        state.final_answer = (
-            "Hello! I'm FinanceGPT, your financial assistant. "
-            "I can provide financial data, company reports, investment insights, and more. "
-            "How can I assist you today?"
-        )
+        greeting_prompt = f"""
+        You are FinanceGPT, a warm, professional financial assistant. 
+        Respond directly to the user's greeting with a friendly introduction in a single line.
+        User said: "{state.user_query}"
+        Reply:
+        """
+        
+        try:
+            response = self.llm_service.client.chat.completions.create(
+                model=self.llm_service.model,
+                messages=[{"role": "user", "content": greeting_prompt}],
+                temperature=0.7,
+                max_tokens=150
+            )
+            state.final_answer = response.choices[0].message.content.strip()
+        except Exception:
+            state.final_answer = "Hello! I'm FinanceGPT, your financial assistant. How can I help you with financial information today?"
+        
         return state
 
     def intent_node(self, state: GraphState) -> GraphState:
         try:
             result = self.intent_agent.classify(state)
             state.route_decision = result.intent
-            if hasattr(result, 'confidence'):
-                state.intent_confidence = result.confidence
-        except Exception:
+        except Exception as e:
+            print(f"Intent error: {e}")
             state.route_decision = "out_of_scope"
         return state
 
@@ -92,7 +107,8 @@ class FinanceGPTGraph:
         try:
             result = self.rephraser.rephrase(state)
             state.rephrased_query = result.rephrased_query
-        except Exception:
+        except Exception as e:
+            print(f"Rephraser error: {e}")
             state.rephrased_query = state.user_query
         return state
 
@@ -106,103 +122,58 @@ class FinanceGPTGraph:
                     state.sources.append(result.source)
             else:
                 state.route_decision = "not_found"
-        except Exception:
-            state.route_decision = "not_found"
-
-        if not state.route_decision:
+        except Exception as e:
+            print(f"DB lookup error: {e}")
             state.route_decision = "not_found"
         return state
 
     def web_search_node(self, state: GraphState) -> GraphState:
         try:
-            if not self.web_search or not hasattr(self.web_search, 'search'):
-                state.web_search_result = "Web search tool not available."
-                return state
-
             result = self.web_search.search(state)
-
-            if result and getattr(result, 'success', False):
+            
+            if result and result.success:
                 state.web_search_result = result.content
-                if hasattr(result, 'sources') and result.sources:
+                if result.sources:
                     state.sources.extend(result.sources)
             else:
-                error_msg = getattr(result, 'error', 'Unknown error') if result else 'No result returned'
-                state.web_search_result = f"No relevant information found through web search. Error: {error_msg}"
+                error_msg = result.error if result else "Unknown error"
+                state.web_search_result = f"Web search failed: {error_msg}"
+                
         except Exception as e:
-            state.web_search_result = f"Error occurred during web search: {str(e)}"
+            print(f"Web search error: {e}")
+            state.web_search_result = f"Web search error: {str(e)}"
         return state
 
     def summarizer_node(self, state: GraphState) -> GraphState:
         try:
-            content = getattr(state, 'db_result', None) or getattr(state, 'web_search_result', None)
-            if not content or content in [
-                "No relevant information found through web search.",
-                "Web search tool not available."
-            ] or content.startswith("Error occurred during web search:") or content.startswith("No relevant information found through web search. Error:"):
-                state.final_answer = (
-                    "Sorry, I couldn't find relevant financial information for your query. "
-                    "Please try rephrasing it or asking something else."
-                )
-                return state
-
-            summarizer_state = GraphState(
-                user_query=state.user_query,
-                session_id=state.session_id,
-                history=state.history,
-                rephrased_query=state.rephrased_query,
-                db_result=state.db_result,
-                web_search_result=state.web_search_result,
-                sources=state.sources
-            )
-
-            result = self.summarizer.summarize(summarizer_state)
+            result = self.summarizer.summarize(state)
             state.final_answer = result.summary
-            if hasattr(result, 'sources') and result.sources:
+            if result.sources:
                 state.sources.extend(result.sources)
-        except Exception:
-            fallback = getattr(state, 'db_result', None) or getattr(state, 'web_search_result', None)
-            if fallback and not fallback.startswith("Error") and not fallback.startswith("No relevant"):
-                truncated_content = fallback[:500] + "..." if len(fallback) > 500 else fallback
-                state.final_answer = f"Based on available information: {truncated_content}"
+        except Exception as e:
+            print(f"Summarizer error: {e}")
+            # Fallback to basic response
+            content = state.db_result or state.web_search_result
+            if content and not content.startswith("Web search failed"):
+                state.final_answer = f"Based on available information: {content[:500]}..."
             else:
-                state.final_answer = (
-                    "An error occurred while processing your query. "
-                    "Please try again with a different question."
-                )
+                state.final_answer = "I apologize, but I couldn't find relevant information for your query."
         return state
 
     def memory_node(self, state: GraphState) -> GraphState:
         try:
             return self.memory.save_interaction(state)
-        except Exception:
+        except Exception as e:
+            print(f"Memory error: {e}")
             return state
 
     def out_of_scope_node(self, state: GraphState) -> GraphState:
-        q = state.user_query.lower()
-        if any(w in q for w in ['weather', 'climate']):
-            state.final_answer = (
-                "I specialize in financial topics. For weather, check Weather.com. "
-                "However, if you want to know how weather impacts markets, I can help!"
-            )
-        elif any(w in q for w in ['recipe', 'cooking', 'food', 'eat']):
-            state.final_answer = (
-                "I focus on financial data and analysis. For recipes or food suggestions, try a food app. "
-                "However, I can help with food industry investments, restaurant stocks, or agricultural commodities!"
-            )
-        elif any(w in q for w in ['doctor', 'medical']):
-            state.final_answer = (
-                "I offer financial expertise, not medical advice. "
-                "But I can assist with health sector investments and pharmaceutical company reports."
-            )
-        else:
-            state.final_answer = (
-                "I'm FinanceGPT, your assistant for:\n"
-                "• Stock analysis and market data\n"
-                "• Company earnings and financial reports\n"
-                "• Market trends and insights\n"
-                "• Investment strategies\n"
-                "Please ask a finance-related question."
-            )
+        try:
+            result = self.out_of_scope.generate_response(state)
+            state.final_answer = result.response
+        except Exception as e:
+            print(f"Out of scope error: {e}")
+            state.final_answer = "I'm a financial assistant and can help with finance-related questions. Please ask about stocks, markets, or company financials."
         return state
 
     def supervisor_router(self, state: GraphState) -> str:

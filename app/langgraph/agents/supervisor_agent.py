@@ -8,12 +8,12 @@ class SupervisorAgent:
     def __init__(self, llm_service: LLMService):
         self.llm_service = llm_service
         self.parser = PydanticOutputParser(pydantic_object=SupervisorResponse)
-    
+
     def analyze(self, state: GraphState) -> SupervisorResponse:
         """Analyze user query and decide routing"""
         prompt = SUPERVISOR_PROMPT.format(
             user_query=state.user_query,
-            history=state.history,
+            history="\n".join(state.history) if state.history else "No previous conversation",
             format_instructions=self.parser.get_format_instructions()
         )
         

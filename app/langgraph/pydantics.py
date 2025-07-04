@@ -7,6 +7,7 @@ class SupervisorResponse(BaseModel):
 
 class IntentResponse(BaseModel):
     intent: Literal["financial_query", "greeting", "out_of_scope"]
+    confidence: Optional[float] = None
     message: Optional[str] = None
 
 class RephraseResponse(BaseModel):
@@ -28,3 +29,7 @@ class WebSearchResponse(BaseModel):
 class SummarizerResponse(BaseModel):
     summary: str
     sources: List[str] = Field(default_factory=list)
+
+class OutOfScopeResponse(BaseModel):
+    response: str
+    suggestion: Optional[str] = None
