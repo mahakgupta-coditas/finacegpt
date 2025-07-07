@@ -2,9 +2,7 @@ from groq import Groq
 from app.config.config import settings
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel
-from typing import Type
 import json
-import re
 
 class LLMService:
     def __init__(self):
@@ -62,20 +60,4 @@ class LLMService:
             return json.loads(json_str)
         except Exception:
             return None
-
-    def _get_default_response(self, model_class: Type[BaseModel]) -> BaseModel:
-        class_name = model_class.__name__
-        if class_name == "SupervisorResponse":
-            return model_class(decision="intent")
-        elif class_name == "IntentResponse":
-            return model_class(intent="out_of_scope")
-        elif class_name == "RephraseResponse":
-            return model_class(rephrased_query="financial query", original_query="financial query")
-        elif class_name == "DatabaseLookupResponse":
-            return model_class(found=False)
-        elif class_name == "SummarizerResponse":
-            return model_class(summary="Unable to process request at this time.", sources=[])
-        elif class_name == "OutOfScopeResponse":
-            return model_class(response="I can only help with financial queries. Please ask about stocks, markets, or company financials.")
-        else:
-            return model_class()
+        
