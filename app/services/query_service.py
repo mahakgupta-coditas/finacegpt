@@ -3,7 +3,7 @@ from app.langgraph.graph import FinanceGPTGraph
 from app.langgraph.agents.memory_agent import MemoryAgent
 from app.langgraph.state import GraphState
 
-def process_query(payload: QueryRequest, db):
+def process_query(payload: QueryRequest, db, vector_db_tool=None, web_search_tool=None):
     """Process query with proper error handling"""
     try:
         agent = MemoryAgent(db)
@@ -12,15 +12,27 @@ def process_query(payload: QueryRequest, db):
         state = GraphState(
             user_query=payload.query,
             session_id=payload.session_id,
-            history=history,
-            db=db
+            history=history
         )
 
-        graph = FinanceGPTGraph(db=db)
+        graph = FinanceGPTGraph(
+            vector_db_tool=vector_db_tool,
+            web_search_tool=web_search_tool,
+            db=db
+        )
+        
         compiled_graph = graph.create_graph()
         result = compiled_graph.invoke(state.model_dump())
 
-        return QueryResponse(answer=result.get("final_answer", "Unable to process query"))
+        final_answer = result.get("final_answer", "Unable to process query")
+        
+        return QueryResponse(
+            answer=final_answer,
+            sources=result.get("sources", [])
+        )
 
-    except Exception:
-        return QueryResponse(answer="I encountered an error. Please try again.")
+    except Exception as e:
+        return QueryResponse(
+            answer="I encountered an error processing your request. Please try again.",
+            sources=[]
+        )
