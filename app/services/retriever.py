@@ -1,19 +1,21 @@
+from sqlalchemy.orm import Session
+from sqlalchemy import func
+from app.models.document_chunk import DocumentChunk
 from sentence_transformers import SentenceTransformer
-from sqlalchemy import text
 from app.config.config import settings
-from app.db_utils.database import engine
 
 model = SentenceTransformer(settings.EMBEDDING_MODEL)
 
-def search_pgvector(query: str, top_k=5) -> list[dict]:
-    query_vec = model.encode([query])[0].tolist()
-    sql = text(f"""
-    SELECT content
-    FROM document_chunks
-    ORDER BY embedding <#> '[{','.join(map(str, query_vec))}]'
-    LIMIT {top_k}
-    """)
+def search_pgvector(db, query, top_k= 5) -> list[dict]:
+    query_embedding = model.encode([query])[0].tolist()
 
-    with engine.connect() as conn:
-        result = conn.execute(sql)
-        return [{"content": row[0]} for row in result.fetchall()]
+    query_vector_str = f"[{', '.join(map(str, query_embedding))}]"
+
+    results = (
+        db.query(DocumentChunk)
+        .order_by(DocumentChunk.embedding.cosine_distance(query_vector_str))
+        .limit(top_k)
+        .all()
+    )
+
+    return [{"content": row.content} for row in results]

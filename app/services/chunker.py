@@ -1,16 +1,12 @@
-def chunk_paragraphs(text: str, max_length: int = 500):
-    paragraphs = [p.strip() for p in text.split("\n") if p.strip()]
+def chunk_paragraphs(text, max_length = 500, overlap = 100):
+    words = text.split()
     chunks = []
-    buffer = ""
+    start = 0
 
-    for para in paragraphs:
-        if len(buffer) + len(para) <= max_length:
-            buffer += " " + para
-        else:
-            chunks.append(buffer.strip())
-            buffer = para
-
-    if buffer:
-        chunks.append(buffer.strip())
+    while start < len(words):
+        end = start + max_length
+        chunk = " ".join(words[start:end])
+        chunks.append(chunk)
+        start += max_length - overlap  
 
     return chunks
