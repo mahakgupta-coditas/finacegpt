@@ -2,13 +2,14 @@ from groq import Groq
 from app.config.config import settings
 from langchain.output_parsers import PydanticOutputParser
 from pydantic import BaseModel
+from typing import Type
 import json
 
 class LLMService:
     def __init__(self):
         self.client = Groq(api_key=settings.GROQ_API_KEY)
         self.model = settings.GROQ_MODEL
-
+    
     def generate_response(self, prompt: str, parser: PydanticOutputParser, model: str = None) -> BaseModel:
         try:
             model = model or self.model
@@ -16,7 +17,7 @@ class LLMService:
                 model=model,
                 messages=[
                     {
-                        "role": "system", 
+                        "role": "system",
                         "content": "You are a helpful financial assistant. Always respond with valid JSON in the exact format requested."
                     },
                     {"role": "user", "content": prompt}
@@ -36,7 +37,7 @@ class LLMService:
         except Exception as e:
             print(f"LLM Error: {e}")
             return self._get_default_response(parser.pydantic_object)
-
+    
     def _extract_json_from_text(self, text: str) -> dict:
         try:
             # Remove any text before first {
@@ -60,4 +61,26 @@ class LLMService:
             return json.loads(json_str)
         except Exception:
             return None
-        
+    
+    def _get_default_response(self, model_class: Type[BaseModel]) -> BaseModel:
+        class_name = model_class.__name__
+        if class_name == "SupervisorResponse":
+            return model_class(decision="intent")
+        elif class_name == "IntentResponse":
+            return model_class(intent="out_of_scope")
+        elif class_name == "RephraseResponse":
+            return model_class(rephrased_query="financial query", original_query="financial query")
+        elif class_name == "DatabaseLookupResponse":
+            return model_class(found=False)
+        elif class_name == "SummarizerResponse":
+            return model_class(summary="Unable to process request at this time.", sources=[])
+        elif class_name == "OutOfScopeResponse":
+            return model_class(response="I can only help with financial queries. Please ask about stocks, markets, or company financials.")
+        elif class_name == "ComparisonResponse":
+            return model_class(
+                comparison="Unable to process comparison at this time.",
+                companies=[],
+                sources=[]
+            )
+        else:
+            return model_class()
