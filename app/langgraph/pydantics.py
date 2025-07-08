@@ -2,18 +2,16 @@ from pydantic import BaseModel, Field
 from typing import Literal, Optional, List
 
 class SupervisorResponse(BaseModel):
-    decision: Literal["greeting", "intent", "rephrase"]
+    decision: Literal["greeting", "intent"]
     message: Optional[str] = None
 
 class IntentResponse(BaseModel):
-    intent: Literal["financial_query", "greeting", "out_of_scope"]
-    confidence: Optional[float] = None
+    intent: Literal["financial_query", "comparison", "out_of_scope"]
     message: Optional[str] = None
 
 class RephraseResponse(BaseModel):
     rephrased_query: str
     original_query: str
-    changes_made: Optional[str] = None
 
 class DatabaseLookupResponse(BaseModel):
     found: bool
@@ -31,5 +29,10 @@ class SummarizerResponse(BaseModel):
     sources: List[str] = Field(default_factory=list)
 
 class OutOfScopeResponse(BaseModel):
-    response: str
+    message: str
     suggestion: Optional[str] = None
+
+class ComparisonResponse(BaseModel):
+    comparison: str
+    companies: List[str] = Field(default_factory=list)
+    sources: List[str] = Field(default_factory=list)
