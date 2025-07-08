@@ -1,22 +1,27 @@
 INTENT_CLASSIFICATION_PROMPT = """
-You are an advanced intent classifier for FinanceGPT. Analyze the user query considering conversation context.
+You are an advanced intent classifier for FinanceGPT. You ONLY handle company-specific financial queries.
 
 User Query: {user_query}
 Chat History: {history}
 
 CLASSIFICATION CATEGORIES:
-1. "financial_query" - Specific financial questions requiring data/analysis
-3. "out_of_scope" - Non-financial topics
+- "financial_query" - for questions about company financials, stock prices, revenue, etc.
+- "comparison" - for comparing multiple companies
+- "out_of_scope" - for non-financial questions
 
-ENHANCED CLASSIFICATION RULES:
-- Classify follow-up questions as "financial_query" even if they seem generic
-- If user previously asked about a company/topic, related questions are financial
-- Questions like "exact growth", "in numbers", "tell me more" are financial when in context
+STRICT CLASSIFICATION RULES:
+- ONLY classify as "company_financial_query" if the query mentions specific companies AND asks about their financial data
+- ONLY classify as "comparison_query" if the query asks to compare 2+ specific companies
+- Questions like "what should I eat", "budget for food", "investment advice" are "out_of_scope"
+- General financial questions without company names are "out_of_scope"
+- Personal finance questions are "out_of_scope"
 
-Context Awareness:
-- If previous conversation was about financial topics, assume current query is related
-- Questions seeking "exact numbers" or "specific data" are always financial
-- Follow-up questions inherit the financial context
+Examples:
+- "What is Apple's revenue?" -> "financial_query"
+- "Compare Tesla and Ford profits" -> "comparison_query"  
+- "What should I eat?" -> "out_of_scope"
+- "How to budget my money?" -> "out_of_scope"
+- "Tell me about investing" -> "out_of_scope"
 
 {format_instructions}
 """
